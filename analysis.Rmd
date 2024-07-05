@@ -1,0 +1,192 @@
+---
+title: "Latent versus observed mean differences"
+author: "Bjarne Schmalbach, Ileana Schmalbach, Jochen Hardt"
+date: "07/04/2024"
+---
+
+# Run time of this script can be in the hours depending on your machine
+
+```{r setup, echo=F}
+rm(list=ls())
+library(lavaan)
+library(knitr)
+library(tidyverse)
+library(pbapply)
+library(kableExtra)
+```
+
+
+```{r, echo=F, warning=F, message=F}
+
+baseDir <- getwd()
+
+#AS+SC+AD+DO
+setwd(paste0(baseDir, "/data/AS+SC+AD+DO"))
+source("ASSCADDO.R",local = T)
+col <- res
+
+#BFI50
+setwd(paste0(baseDir, "/data/BFI50"))
+source("BFI50.R",local = T)
+col <- rbind(col, res)
+
+#CFCS
+setwd(paste0(baseDir, "/data/CFCS"))
+source("CFCS.R",local = T)
+col <- rbind(col, res)
+
+#DASS
+setwd(paste0(baseDir, "/data/DASS"))
+source("DASS.R",local = T)
+col <- rbind(col, res)
+
+#ECR
+setwd(paste0(baseDir, "/data/ECR"))
+source("ECR.R",local = T)
+col <- rbind(col, res)
+
+#FBPS
+setwd(paste0(baseDir, "/data/FBPS"))
+source("FBPS.R",local = T)
+col <- rbind(col, res)
+
+#FPS
+setwd(paste0(baseDir, "/data/FPS"))
+source("FPS.R",local = T)
+col <- rbind(col, res)
+
+#FTI
+setwd(paste0(baseDir, "/data/FTI"))
+source("FTI.R",local = T)
+col <- rbind(col, res)
+
+#GCBS
+setwd(paste0(baseDir, "/data/GCBS"))
+source("GCBS.R",local = T)
+col <- rbind(col, res)
+
+#GRIT
+setwd(paste0(baseDir, "/data/GRIT"))
+source("GRIT.R",local = T)
+col <- rbind(col, res)
+
+#HSNS
+setwd(paste0(baseDir, "/data/HSNS+DD"))
+source("HSNS.R",local = T)
+col <- rbind(col, res)
+
+#DD
+setwd(paste0(baseDir, "/data/HSNS+DD"))
+source("DD.R",local = T)
+col <- rbind(col, res)
+
+#HSQ
+setwd(paste0(baseDir, "/data/HSQ"))
+source("HSQ.R",local = T)
+col <- rbind(col, res)
+
+#MACH
+setwd(paste0(baseDir, "/data/MACH"))
+source("MACH.R",local = T)
+col <- rbind(col, res)
+
+#MIES
+setwd(paste0(baseDir, "/data/MIES"))
+source("MIES.R",local = T)
+col <- rbind(col, res)
+
+#NIS
+setwd(paste0(baseDir, "/data/NIS"))
+source("NIS.R",local = T)
+col <- rbind(col, res)
+
+#NPAS
+setwd(paste0(baseDir, "/data/NPAS"))
+source("NPAS.R",local = T)
+col <- rbind(col, res)
+
+#NR6
+setwd(paste0(baseDir, "/data/NR6"))
+source("NR6.R",local = T)
+col <- rbind(col, res)
+
+##OSRI44
+setwd(paste0(baseDir, "/data/OSRI44"))
+source("OSRI44.R",local = T)
+col <- rbind(col, res)
+
+#PWE
+setwd(paste0(baseDir, "/data/PWE"))
+source("PWE.R",local = T)
+col <- rbind(col, res)
+
+#RSE
+setwd(paste0(baseDir, "/data/RSE"))
+source("RSE.R",local = T)
+col <- rbind(col, res)
+
+#RWAS
+setwd(paste0(baseDir, "/data/RWAS"))
+source("RWAS.R",local = T)
+col <- rbind(col, res)
+
+#SCS
+setwd(paste0(baseDir, "/data/SCS"))
+source("SCS.R",local = T)
+col <- rbind(col, res)
+
+
+#Addiutions to table
+col$ratio <- abs(col$diff)/abs(col$obs)
+col$perc <- round(100*col$ratio,1)
+col$pool_sd <- sqrt(col$var1+col$var2)
+col$z <- col$diff/col$pool_sd
+col$p <- (1-pnorm(abs(col$z)))
+col$UL_CI <- col$diff + 1.96*col$pool_sd
+col$LL_CI <- col$diff - 1.96*col$pool_sd
+col$absDiff <- abs(col$diff)
+
+kable(col, digits=3) %>% kable_styling()
+
+```
+
+
+
+
+## Meta-analytic summary  
+
+
+```{r, echo=F, warning=F, message=F}
+col$names <- factor(rownames(col))
+
+ggplot(col)+
+  geom_point(aes(x=lat, y=obs))+
+  geom_abline(intercept = 0, slope = 1)+
+  geom_abline(intercept=0.1, slope = 1, color="blue")+
+  geom_abline(intercept=0.2, slope = 1, color="red")+
+  geom_abline(intercept=-0.1, slope = 1, color="blue")+
+  geom_abline(intercept=-0.2, slope = 1, color="red")+
+  geom_vline(xintercept=0)+
+  geom_hline(yintercept=0)+
+  xlab("Std. latent mean difference")+ylab("Std. observed mean difference")
+
+
+ggplot(data=col) +
+        geom_crossbar(aes(x=names, y=lat, ymin=lat-1.96*sqrt(var1), ymax=lat+1.96*sqrt(var1)), color="red") + 
+        geom_crossbar(aes(x=names, y=obs, ymin=obs-1.96*sqrt(var2), ymax=obs+1.96*sqrt(var2)), color="blue") + 
+        geom_hline(yintercept=0, lty=2) +  # add a dotted line at x=1 after flip
+        coord_flip() +  # flip coordinates (puts labels on y axis)
+        xlab("Scales / Factors") + ylab("Cohen's ds (95% CI)") +
+        theme_bw()+labs(caption="Red = Latent, Blue = Observed")# use a white background
+
+cor.test(col$lat, col$obs)
+m <- lm(lat~obs,data=col); anova(m); summary(m)
+
+
+print("Test for Association with Omega")
+ggplot(col)+
+  geom_point(aes(x=omega, y=absDiff))
+cor.test(col$absDiff, col$omega)
+m <- lm(absDiff~omega,data=col); anova(m); summary(m)
+
+```
