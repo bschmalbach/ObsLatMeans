@@ -13,18 +13,42 @@ for (i in 1:20) {
 
 df <- df[rowSums(df[1:20]==0)==0,]
 
-EFAutilities::efa(df[1:20], factors = 1)
+for (i in 1:20) {
+  df[[i]] <- ordered(df[[i]], levels=sort(unique(df[[i]])))
+}
+
+m1 <- "MACH_1 =~ Q1A + Q2A + Q5A + Q8A + Q12A + Q13A + Q15A + Q18A + Q19A + Q20A"
+m2 <- "MACH_2 =~ Q3A + Q4A + Q6A + Q7A + Q9A + Q10A + Q11A + Q14A + Q16A + Q17A"
 
 
+#random sample for testing
+set.seed(1337)
+rand <- sample(1:nrow(df), size = 5000, replace = F)
 
-model <- "MACH_1 =~ Q1A + Q2A + Q5A + Q8A + Q12A + Q13A + Q15A + Q18A + Q19A + Q20A
-          MACH_2 =~ Q3A + Q4A + Q6A + Q7A + Q9A + Q10A + Q11A + Q14A + Q16A + Q17A"
+fit1 <- cfa(m1, df[rand,], estimator="wlsmv", ordered=names(df)[1:20], group = "gender", group.equal=c("thresholds", "loadings", "intercepts"), std.lv=F, auto.fix.first=T)
+fit2 <- cfa(m2, df[rand,], estimator="wlsmv", group = "gender", group.equal=c("thresholds", "loadings", "intercepts"), std.lv=F, auto.fix.first=T)
 
-fit <- sem(model, df, estimator="mlr", group = "gender", group.equal=c("loadings", "intercepts"), std.lv=T, auto.fix.first=F)
-lat <- (lavInspect(fit, what="std")$`2`$alpha)*(-1)
+getLat <- function(x){
+  fit <- sem(x, df[rand,], estimator="wlsmv", ordered=names(df)[1:20], group = "gender", group.equal=c("thresholds", "loadings", "intercepts"), std.lv=F, auto.fix.first=T)
+  omega <- 0
+  omega <- mean(semTools::compRelSEM(fit, ord.scale = T))
+  if (is.na(omega)) {
+    l1<-lavInspect(fit, what="std")$`1`$lambda; l2<-lavInspect(fit, what="std")$`2`$lambda
+    omega <- mean(sum(abs(l1))^2 / (sum(abs(l1))^2 + sum(1-abs(l1)^2)), sum(abs(l2))^2 / (sum(abs(l2))^2 + sum(1-abs(l2^2))))
+  }
+  fitM <- fitmeasures(fit, fit.measures = c("chisq.scaled", "df", "pvalue.scaled", "cfi.scaled", "tli.scaled", "rmsea.scaled", "srmr"))
+  return(list(lavInspect(fit, what="std")$`2`$alpha*-1, 
+              omega,
+              fitM))
+}
 
+lv <- list(getLat(m1), getLat(m2))
+lat <- unlist(lapply(lv, `[[`, 1))
 
 #obs diff
+for (i in 1:20) {
+  df[[i]] <- as.numeric(paste(df[[i]]))
+}
 df$MACH_1 <- scale(rowSums(df[c(1,2,5,8,12,13,15,18:20)]))
 df$MACH_2 <- scale(rowSums(df[c(3,4,6,7:11,14,16,17)]))
 
@@ -45,7 +69,6 @@ res <- data.frame(cbind(lat, obs))
 names(res)[1] <- "lat"
 
 #compare
-
 n_g <- c(sum(df$gender==1), sum(df$gender==2))
 
 res$diff <- res$lat-res$obs
@@ -55,12 +78,12 @@ res$var1 <- ((n_g[1]+n_g[2])/(n_g[1]*n_g[2])) + (res$lat^2 / (2*(n_g[1]+n_g[2]))
 res$var2 <- ((n_g[1]+n_g[2])/(n_g[1]*n_g[2])) + (res$obs^2 / (2*(n_g[1]+n_g[2])))
 res$pool_sd <- sqrt((res$var1+res$var2)/2)
 
-res$z <- res$diff/(res$pool_sd/sqrt(sum(n_g)))
+res$z <- res$diff/(res$pool_sd)
 res$p <- 2*(1-pnorm(abs(res$z)))
 res$dd <- res$diff/(res$pool_sd)
 
 res$UL_CI <- res$diff + 1.96*res$pool_sd
 res$LL_CI <- res$diff - 1.96*res$pool_sd
-
 res$n <- sum(n_g)
-res$omega <-  rowMeans(matrix(unlist(semTools::reliability(fit, what="omega")),nrow = nrow(res), byrow = F))
+res$omega <- lapply(lv, `[[`, 2)
+res$fitM <- lapply(lv, `[[`, 3)

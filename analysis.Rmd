@@ -4,26 +4,29 @@ author: "Bjarne Schmalbach, Ileana Schmalbach, Jochen Hardt"
 date: "07/04/2024"
 ---
 
-# Run time of this script can be in the hours depending on your machine
 
 ```{r setup, echo=F}
-rm(list=ls())
+# Runtime of this script can be in the hours depending on your machine
 library(lavaan)
 library(knitr)
 library(tidyverse)
-library(pbapply)
 library(kableExtra)
 ```
 
 
-```{r, echo=F, warning=F, message=F}
+```{r echo=F, message=FALSE, warning=FALSE}
 
 baseDir <- getwd()
+
+#16PF
+setwd(paste0(baseDir, "/data/16PF"))
+source("16PF.R",local = T)
+col <- res
 
 #AS+SC+AD+DO
 setwd(paste0(baseDir, "/data/AS+SC+AD+DO"))
 source("ASSCADDO.R",local = T)
-col <- res
+col <- rbind(col, res)
 
 #BFI50
 setwd(paste0(baseDir, "/data/BFI50"))
@@ -120,6 +123,11 @@ setwd(paste0(baseDir, "/data/PWE"))
 source("PWE.R",local = T)
 col <- rbind(col, res)
 
+#RIASEC
+setwd(paste0(baseDir, "/data/RIASEC"))
+source("RIASEC.R",local = T)
+col <- rbind(col, res)
+
 #RSE
 setwd(paste0(baseDir, "/data/RSE"))
 source("RSE.R",local = T)
@@ -135,29 +143,78 @@ setwd(paste0(baseDir, "/data/SCS"))
 source("SCS.R",local = T)
 col <- rbind(col, res)
 
+scales <- c(paste0("16PF - ", c("Warmth", "Reasoning", "Emotional Stability", "Dominance", "Liveliness", "Rule-Consciousness", "Social Boldness", "Sensitivity", "Vigilance", "Abstractness", "Privateness", "Apprehension", "Openness to Change", "Self-Reliance", "Perfectionism", "Tension")),
+  paste0("IPP - ", c("Assertiveness", "Social Confidence", "Adventurousness", "Dominance")),
+  paste0("BFI-50 - ", c("Openness", "Conscientiousness", "Extraversion", "Agreeableness", "Neuroticism")),
+  paste0("CFCS"),
+  paste0("DASS - ", c("Depression" ,"Anxiety", "Stress")),
+  paste0("ECR - ", c("Avoidant", "Anxious")),
+  paste0("FBPS"),
+  paste0("FPS - ", c("Conservative", "Liberal", "Radical", "Socialist", "Cultural", "Color")),
+  paste0("FTI - ", c("Curious", "Cautious", "Analytical", "Prosocial")),
+  paste0("GCBS"),
+  paste0("GRIT"),
+  paste0("HSNS"),
+  paste0("DD - ", c("Psychopathy", "Narcissism", "Machivelianism")),
+  paste0("HSQ - ", c("Affiliative", "Self-enhancing", "Aggressive", "Self-defeating")),
+  paste0("MACH - ", c("Machiavellian", "Anti-Machiavellian")),
+  paste0("MIES - ", c("Introversion", "Extraversion")),
+  paste0("NIS"),
+  paste0("NPAS"),
+  paste0("NR6"),
+  paste0("OSRI44 - ", c("Masculine", "Feminine")),
+  paste0("PWE"),
+  paste0("RIASEC - ", c("Realistic", "Investigative", "Artistic", "Social", "Enterprising", "Conventional")),
+  paste0("RSE"),
+  paste0("RWAS"),
+  paste0("SCS"))
 
-#Addiutions to table
-col$ratio <- abs(col$diff)/abs(col$obs)
-col$perc <- round(100*col$ratio,1)
-col$pool_sd <- sqrt(col$var1+col$var2)
-col$z <- col$diff/col$pool_sd
-col$p <- (1-pnorm(abs(col$z)))
-col$UL_CI <- col$diff + 1.96*col$pool_sd
-col$LL_CI <- col$diff - 1.96*col$pool_sd
+rownames(col) <- col$names <- factor(scales, levels = scales)
+
+#Remove invalid model-----------------------------------------------------------
+col <- col[col$names!="16PF - Sensitivity",]
+
+
+#Additions to table-------------------------------------------------------------
+
 col$absDiff <- abs(col$diff)
+col$pool_sd <- sqrt(col$var1+col$var2)
+col$p <- (1-pnorm(abs(col$z)))
+col$ratio <- abs(col$diff)/(abs(col$lat+col$obs)/2)
+col$perc <- round(100*col$ratio,1)
+col$LL_CI <- col$absDiff - 1.96*col$pool_sd
+col$UL_CI <- col$absDiff + 1.96*col$pool_sd
+col$omega <- as.numeric(col$omega)
 
-kable(col, digits=3) %>% kable_styling()
+col$signedDiff <- col$absDiff
+col$signedDiff[col$lat>0 & col$lat<col$obs] <- (-1)*col$absDiff[col$lat>0 & col$lat<col$obs]
+col$signedDiff[col$lat<0 & col$lat>col$obs] <- (-1)*col$absDiff[col$lat<0 & col$lat>col$obs]
+col$signedRatio <- col$signedDiff/(abs(col$lat+col$obs)/2)
+col$signedPerc <- round(100*col$signedRatio,1)
+col$LL_CI <- col$signedDiff - 1.96*col$pool_sd
+col$UL_CI <- col$signedDiff + 1.96*col$pool_sd
+
+colP <- col[c("lat", "obs", "absDiff", "signedDiff", "perc", "signedPerc", "p", "LL_CI", "UL_CI","omega", "n")]
+
+kable(colP, digits=3, row.names = T) %>% kable_styling()
+
+t <- tidyr::unnest(col, fitM)[c("names","fitM")]
+t$fitN <- rep(c("Chi²", "df", "p", "CFI", "TLI", "RMSEA", "SRMR"), times=nrow(t)/7)
+t <- pivot_wider(t, id_cols = "names", names_from = "fitN", values_from = "fitM")
+for (i in 5:8) {
+  t[[i]] <- round(t[[i]], 3)  
+}
+write.csv(t, "fitResults.csv")
 
 ```
 
 
-
-
 ## Meta-analytic summary  
 
-
 ```{r, echo=F, warning=F, message=F}
-col$names <- factor(rownames(col))
+print("Summary statistics")
+library(vtable)
+st(col, vars = c("signedDiff", "absDiff", "perc", "signedPerc", "omega", "n"), summ = c('notNA(x)','mean(x)','sd(x)','min(x)','pctile(x)[25]', 'pctile(x)[50]','pctile(x)[75]','max(x)'))
 
 ggplot(col)+
   geom_point(aes(x=lat, y=obs))+
@@ -170,23 +227,161 @@ ggplot(col)+
   geom_hline(yintercept=0)+
   xlab("Std. latent mean difference")+ylab("Std. observed mean difference")
 
+ggplot(col)+
+  geom_histogram(aes(x=signedDiff))+
+  geom_vline(xintercept=0)+
+  xlab("Signed effect size difference")
+t.test(col$signedDiff)
+effectsize::cohens_d(col$signedDiff)
 
+ggplot(col)+
+  geom_histogram(aes(x=absDiff))+
+  geom_vline(xintercept=0)+
+  xlab("Absolute effect size difference")
+t.test(col$absDiff)
+effectsize::cohens_d(col$absDiff)
+
+```
+
+
+```{r, echo=F, warning=F, message=F, fig.width=10,fig.height=20}
 ggplot(data=col) +
         geom_crossbar(aes(x=names, y=lat, ymin=lat-1.96*sqrt(var1), ymax=lat+1.96*sqrt(var1)), color="red") + 
         geom_crossbar(aes(x=names, y=obs, ymin=obs-1.96*sqrt(var2), ymax=obs+1.96*sqrt(var2)), color="blue") + 
         geom_hline(yintercept=0, lty=2) +  # add a dotted line at x=1 after flip
         coord_flip() +  # flip coordinates (puts labels on y axis)
-        xlab("Scales / Factors") + ylab("Cohen's ds (95% CI)") +
-        theme_bw()+labs(caption="Red = Latent, Blue = Observed")# use a white background
+        xlab("Scales / Factors") + ylab("Cohen's ds ± 95% CI)") +
+        scale_x_discrete(limits=rev)+
+        theme_bw()+
+        labs(caption="Red = Latent, Blue = Observed")
 
+#forestplot
+
+library(metafor); library(forestplot)
+rma(yi=col$absDiff, vi=col$pool_sd^2)
+a <- rma(yi=col$absDiff, vi=col$pool_sd^2)
+
+fp1 <- col |>
+  forestplot(labeltext = names,
+             mean = absDiff,
+             lower = LL_CI,
+             upper = UL_CI,
+             zero = 0,
+             cex  = 2,
+             lineheight = "auto",
+             title = "",
+             xlab = "Absolute effect size difference",
+             clip=c(-0.05, 0.35)) |>
+  fp_set_style(box = "royalblue",
+               line = "darkblue",
+               summary = "royalblue") |> 
+  fp_append_row(mean  = a$beta[[1]],
+               lower = a$ci.lb[[1]],
+               upper = a$ci.ub[[1]],
+               names = "Summary",
+               is.summary = TRUE) |> 
+  fp_set_zebra_style("#EFEFEF")
+fp1
+
+#signed diffs
+rma(yi=col$signedDiff, vi=col$pool_sd^2)
+a <- rma(yi=col$signedDiff, vi=col$pool_sd^2)
+
+fp1 <- col |>
+  forestplot(labeltext = names,
+             mean = signedDiff,
+             lower = LL_CI,
+             upper = UL_CI,
+             zero = 0,
+             cex  = 2,
+             lineheight = "auto",
+             title = "",
+             xlab = "Signed effect size difference",
+             clip=c(-0.2 , 0.35)) |>
+  fp_set_style(box = "royalblue",
+               line = "darkblue",
+               summary = "royalblue") |> 
+ fp_append_row(mean  = a$beta[[1]],
+               lower = a$ci.lb[[1]],
+               upper = a$ci.ub[[1]],
+               names = "Summary",
+ #              OR = "0.1",
+               is.summary = TRUE) |> 
+  fp_set_zebra_style("#EFEFEF")
+fp1
+
+```
+
+
+```{r, echo=F, warning=F, message=F}
+print("Correlation of Latent and Observed Differences")
 cor.test(col$lat, col$obs)
 m <- lm(lat~obs,data=col); anova(m); summary(m)
 
 
 print("Test for Association with Omega")
-ggplot(col)+
-  geom_point(aes(x=omega, y=absDiff))
+
+ggplot(col, aes(x=omega, y=signedDiff))+
+  geom_point()+
+  geom_smooth()+
+  xlab("Omega")+ylab("Signed effect size difference")
+
+ggplot(col, aes(x=omega, y=signedDiff))+
+  geom_point()+
+  geom_smooth(method = "lm")+
+  xlab("Omega")+ylab("Signed effect size difference")
+
+cor.test(col$signedDiff, col$omega)
+m <- lm(signedDiff~omega*lat,data=col); anova(m); summary(m)
+
+
+print("Test for Association with Omega, absolute")
+
+ggplot(col, aes(x=omega, y=absDiff))+
+  geom_point()+
+  geom_smooth()+
+  xlab("Omega")+ylab("Absolute effect size difference")
+
+ggplot(col, aes(x=omega, y=absDiff))+
+  geom_point()+
+  geom_smooth(method = "lm")+
+  xlab("Omega")+ylab("Absolute effect size difference")
+
 cor.test(col$absDiff, col$omega)
-m <- lm(absDiff~omega,data=col); anova(m); summary(m)
+m <- lm(absDiff~omega*lat,data=col); anova(m); summary(m)
+
+
+print("Test for Association with Omega, Percentage")
+
+ggplot(col, aes(x=omega, y=perc))+
+  geom_point()+
+  geom_smooth()+
+  xlab("Omega")+ylab("% change")
+
+ggplot(col, aes(x=omega, y=perc))+
+  geom_point()+
+  geom_smooth(method = "lm")+
+  xlab("Omega")+ylab("% change")
+
+cor.test(col$perc, col$omega)
+cor.test(col$perc, col$omega, method = "spearman")
+m <- lm(perc~omega*lat,data=col[!is.infinite(col$perc),]); anova(m); summary(m)
+
+print("Test for Association with Omega, Percentage Signed")
+
+ggplot(col, aes(x=omega, y=signedPerc))+
+  geom_point()+
+  geom_smooth()+
+  xlab("Omega")+ylab("Signed % change")
+
+ggplot(col, aes(x=omega, y=signedPerc))+
+  geom_point()+
+  geom_smooth(method = "lm")+
+  xlab("Omega")+ylab("Signed % change")
+
+cor.test(col$signedPerc, col$omega)
+m <- lm(signedPerc~omega*lat,data=col[!is.infinite(col$perc),]); anova(m); summary(m)
+
 
 ```
+

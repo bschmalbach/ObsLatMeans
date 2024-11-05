@@ -4,13 +4,34 @@ library(lavaan)
 df <- read.csv("data.csv",sep = "\t")
 df <- df[df$gender %in% c(1,2),]
 df <- df[rowSums(df[1:10]==0)==0,]
+for (i in 1:10) {
+  df[[i]] <- ordered(df[[i]], levels=sort(unique(df[[i]])))
+}
 
-model <- "HSNS =~ HSNS1 + HSNS2 + HSNS3 + HSNS4 + HSNS5 + HSNS6 + HSNS7 + HSNS8 + HSNS9 + HSNS10"
-fit <- sem(model, df, estimator="mlr", group = "gender", group.equal=c("loadings", "intercepts"), std.lv=T, auto.fix.first=F)
-lat <- (lavInspect(fit, what="std")$`1`$alpha)
+m1 <- "HSNS =~ HSNS1 + HSNS2 + HSNS3 + HSNS4 + HSNS5 + HSNS6 + HSNS7 + HSNS8 + HSNS9 + HSNS10"
+
+getLat <- function(x){
+  fit <- sem(x, df, estimator="wlsmv", ordered=names(df)[1:10], group = "gender", group.equal=c("thresholds", "loadings", "intercepts"), std.lv=F, auto.fix.first=T)
+  omega <- 0
+  omega <- mean(semTools::compRelSEM(fit, ord.scale = T))
+  if (is.na(omega)) {
+    l1<-lavInspect(fit, what="std")$`1`$lambda; l2<-lavInspect(fit, what="std")$`2`$lambda
+    omega <- mean(sum(abs(l1))^2 / (sum(abs(l1))^2 + sum(1-abs(l1)^2)), sum(abs(l2))^2 / (sum(abs(l2))^2 + sum(1-abs(l2^2))))
+  }
+  fitM <- fitmeasures(fit, fit.measures = c("chisq.scaled", "df", "pvalue.scaled", "cfi.scaled", "tli.scaled", "rmsea.scaled", "srmr"))
+  return(list(lavInspect(fit, what="std")$`1`$alpha, 
+              omega,
+              fitM))
+}
+
+lv <- list(getLat(m1))
+lat <- unlist(lapply(lv, `[[`, 1))
 
 
 #obs diff
+for (i in 1:10) {
+  df[[i]] <- as.numeric(paste(df[[i]]))
+}
 df$HSNS_sum <- scale(rowSums(df[1:10]))
 
 get_d <- function(x){
@@ -28,7 +49,6 @@ res <- data.frame(cbind(lat, obs))
 names(res)[1] <- "lat"
 
 #compare
-
 n_g <- c(sum(df$gender==1), sum(df$gender==2))
 
 res$diff <- res$lat-res$obs
@@ -38,12 +58,12 @@ res$var1 <- ((n_g[1]+n_g[2])/(n_g[1]*n_g[2])) + (res$lat^2 / (2*(n_g[1]+n_g[2]))
 res$var2 <- ((n_g[1]+n_g[2])/(n_g[1]*n_g[2])) + (res$obs^2 / (2*(n_g[1]+n_g[2])))
 res$pool_sd <- sqrt((res$var1+res$var2)/2)
 
-res$z <- res$diff/(res$pool_sd/sqrt(sum(n_g)))
+res$z <- res$diff/(res$pool_sd)
 res$p <- 2*(1-pnorm(abs(res$z)))
 res$dd <- res$diff/(res$pool_sd)
 
 res$UL_CI <- res$diff + 1.96*res$pool_sd
 res$LL_CI <- res$diff - 1.96*res$pool_sd
-
 res$n <- sum(n_g)
-res$omega <-  rowMeans(matrix(unlist(semTools::reliability(fit, what="omega")),nrow = nrow(res), byrow = F))
+res$omega <- lapply(lv, `[[`, 2)
+res$fitM <- lapply(lv, `[[`, 3)
